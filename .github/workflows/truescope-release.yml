@@ -1,8 +1,8 @@
 name: Truescope Release
 
 # Builds a self-contained cyrus-ai tarball for Linux arm64 (our Graviton EC2)
-# and publishes it as a GitHub Release. Install on the server with:
-#   npm install -g https://github.com/TruescopeHQ/cyrus/releases/latest/download/cyrus-ai-linux-arm64.tgz
+# and publishes it as a GitHub Release. Install on the server with
+# scripts/truescope-install.sh (downloads, then npm install -g the file).
 # To also build x64, add an entry to the build matrix.
 
 on:
@@ -97,6 +97,7 @@ jobs:
             --notes "Truescope build of \`$GITHUB_SHA\`.
 
           \`\`\`
-          npm install -g https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/cyrus-ai-linux-arm64.tgz
+          curl -fL -o /tmp/cyrus-ai.tgz https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/cyrus-ai-linux-arm64.tgz
+          npm install -g /tmp/cyrus-ai.tgz
           \`\`\`" \
             --latest

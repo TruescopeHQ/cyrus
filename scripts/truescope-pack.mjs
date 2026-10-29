@@ -37,8 +37,8 @@ const run = (cmd, args, cwd) =>
 		.toString()
 		.trim();
 const readJson = (f) => JSON.parse(readFileSync(f, "utf8"));
-// pnpm deploy hard-links workspace package files to the source tree, so
-// unlink before writing or the edit leaks back into the checkout.
+// Unlink before writing so an edit can never leak back into the source tree
+// through a hard link (pnpm's default import method on Linux).
 const writeJson = (f, v) => {
 	rmSync(f);
 	writeFileSync(f, `${JSON.stringify(v, null, "\t")}\n`);
@@ -53,6 +53,9 @@ run(
 		"--prod",
 		"--legacy",
 		"--config.node-linker=hoisted",
+		// Real copies, not hard links: npm drops hard-link entries when it
+		// unpacks a tarball, and on Linux pnpm hard-links identical files.
+		"--config.package-import-method=copy",
 		app,
 	],
 	root,

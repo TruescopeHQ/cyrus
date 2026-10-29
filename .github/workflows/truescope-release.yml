@@ -1,0 +1,102 @@
+name: Truescope Release
+
+# Builds a self-contained cyrus-ai tarball for Linux arm64 (our Graviton EC2)
+# and publishes it as a GitHub Release. Install on the server with:
+#   npm install -g https://github.com/TruescopeHQ/cyrus/releases/latest/download/cyrus-ai-linux-arm64.tgz
+# To also build x64, add an entry to the build matrix.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: truescope-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: v
+        run: |
+          BASE=$(node -p 'require("./apps/cli/package.json").version')
+          echo "version=$BASE-truescope.${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: version
+    strategy:
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          package-manager-cache: false
+
+      - name: Install dependencies
+        uses: ./.github/actions/install-dependencies
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Test Truescope patches
+        run: pnpm --filter cyrus-slack-event-transport test:run
+
+      - name: Pack tarball
+        run: |
+          TGZ=$(node scripts/truescope-pack.mjs dist-release "${{ needs.version.outputs.version }}" | tail -1)
+          mv "$TGZ" dist-release/cyrus-ai-linux-${{ matrix.arch }}.tgz
+
+      - name: Smoke test install
+        run: |
+          npm install -g --offline ./dist-release/cyrus-ai-linux-${{ matrix.arch }}.tgz
+          test "$(cyrus --version)" = "${{ needs.version.outputs.version }}"
+          grep -q CYRUS_SLACK_ALLOWED_CHANNELS \
+            "$(npm root -g)/cyrus-ai/node_modules/cyrus-slack-event-transport/dist/SlackEventTransport.js"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cyrus-ai-linux-${{ matrix.arch }}
+          path: dist-release/cyrus-ai-linux-${{ matrix.arch }}.tgz
+          compression-level: 0
+          retention-days: 3
+
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" assets/*.tgz \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "cyrus-ai $VERSION" \
+            --notes "Truescope build of \`$GITHUB_SHA\`.
+
+          \`\`\`
+          npm install -g https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/cyrus-ai-linux-arm64.tgz
+          \`\`\`" \
+            --latest

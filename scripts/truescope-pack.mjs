@@ -28,7 +28,8 @@ if (!outArg) {
 }
 const root = resolve(import.meta.dirname, "..");
 const out = resolve(outArg);
-const app = join(out, "cyrus-ai");
+// npm tarballs keep their contents under a top-level `package/` directory.
+const app = join(out, "package");
 rmSync(out, { recursive: true, force: true });
 
 const run = (cmd, args, cwd) =>
@@ -101,8 +102,9 @@ for (const f of [".modules.yaml", ".pnpm-workspace-state-v1.json", ".pnpm"]) {
 		rmSync(join(modules, f), { recursive: true });
 }
 
-const tgz = run("npm", ["pack", "--pack-destination", out], app)
-	.split("\n")
-	.pop();
+// Tar it ourselves: `npm pack` crashes ("Exit handler never called") on a
+// tree this size on Linux. .bin links are recreated by npm on install.
+const tgz = join(out, `cyrus-ai-${appPkg.version}.tgz`);
+run("tar", ["-czf", tgz, "--exclude=.bin", "-C", out, "package"], out);
 rmSync(app, { recursive: true, force: true });
-console.log(join(out, tgz));
+console.log(tgz);

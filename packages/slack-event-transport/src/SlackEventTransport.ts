@@ -305,6 +305,18 @@ export class SlackEventTransport extends EventEmitter {
 			return;
 		}
 
+		// Channel allowlist (CYRUS_SLACK_ALLOWED_CHANNELS, comma-separated
+		// channel IDs). Checked before de-dup and thread-following so events
+		// from other channels never start or continue a session. We still
+		// reply 200 so Slack doesn't retry the delivery.
+		if (!this.isChannelAllowed(event.channel)) {
+			this.logger.debug(
+				`Ignoring ${event.type} from non-allowlisted channel ${event.channel}`,
+			);
+			reply.code(200).send({ success: true, ignored: true });
+			return;
+		}
+
 		// Thread-following can be disabled (per-team toggle pushed via config, or
 		// the CYRUS_SLACK_THREAD_FOLLOWING_DISABLED env kill-switch). When off,
 		// behave exactly like the app_mention-only runtime: drop `message` events
@@ -399,6 +411,22 @@ export class SlackEventTransport extends EventEmitter {
 			return false;
 		}
 		return true;
+	}
+
+	/**
+	 * Read the channel allowlist from CYRUS_SLACK_ALLOWED_CHANNELS at request
+	 * time. Unset or empty means every channel is allowed (upstream behaviour).
+	 */
+	private isChannelAllowed(channel: string | undefined): boolean {
+		const raw = process.env.CYRUS_SLACK_ALLOWED_CHANNELS?.trim();
+		if (!raw) {
+			return true;
+		}
+		const allowed = raw
+			.split(",")
+			.map((id) => id.trim())
+			.filter(Boolean);
+		return channel != null && allowed.includes(channel);
 	}
 
 	private isDuplicateMessage(key: string): boolean {

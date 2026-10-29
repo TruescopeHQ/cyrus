@@ -38,8 +38,13 @@ case "${1:-}" in
 *) URL="https://github.com/$REPO/releases/download/v$1/cyrus-ai-linux-$ARCH.tgz" ;;
 esac
 
+# Download first: npm may refuse remote tarball URLs (allow-remote).
+TGZ="$(mktemp -d)/cyrus-ai.tgz"
+trap 'rm -rf "$(dirname "$TGZ")"' EXIT
+curl -fL --progress-bar -o "$TGZ" "$URL"
+
 echo "was: $(cyrus --version 2>/dev/null || echo 'not installed')"
-npm install -g "$URL"
+npm install -g "$TGZ"
 hash -r
 echo "now: $(cyrus --version)"
 echo "Restart cyrus to activate."
